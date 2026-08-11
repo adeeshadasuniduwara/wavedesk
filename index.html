@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WaveDesk — Elliott Wave Auto Analysis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root{
+    --bg:#0B0E14;
+    --panel:#10141D;
+    --panel-2:#161B26;
+    --line:#232937;
+    --text:#E7EAF0;
+    --muted:#7C879C;
+    --bull:#3DDC97;
+    --bear:#FF6B6B;
+    --amber:#F2C14E;
+    --amber-dim:#7A6428;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .topbar{
+    display:flex; align-items:center; gap:20px;
+    padding:16px 24px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, #0D1119, #0B0E14);
+  }
+  .logo{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700; font-size:20px; letter-spacing:-0.02em;
+    display:flex; align-items:center; gap:8px;
+  }
+  .logo .mark{
+    width:22px;height:22px;
+    display:inline-block;
+    background:linear-gradient(135deg, var(--amber), var(--bull));
+    clip-path:polygon(0 100%, 20% 40%, 40% 70%, 60% 10%, 80% 55%, 100% 0%, 100% 100%);
+  }
+  .controls{ display:flex; gap:10px; margin-left:auto; flex-wrap:wrap; }
+  select, button.refresh{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:9px 14px;
+    border-radius:8px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:13px;
+    cursor:pointer;
+  }
+  button.refresh{ font-family:'Inter'; font-weight:600; color:var(--bg); background:var(--amber); border:none; }
+  button.refresh:hover{ opacity:.9; }
+  .layout{
+    display:grid;
+    grid-template-columns: 1fr 320px;
+    gap:1px;
+    background:var(--line);
+  }
+  @media (max-width: 900px){ .layout{ grid-template-columns: 1fr; } }
+  .chart-col{ background:var(--bg); padding:16px; position:relative; }
+  #chart{ width:100%; height:560px; border-radius:10px; overflow:hidden; }
+  .status{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--muted); margin-top:10px; }
+  .sidebar{ background:var(--panel); padding:20px; display:flex; flex-direction:column; gap:20px; }
+  .card{ background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .card h3{ margin:0 0 12px; font-family:'Space Grotesk'; font-size:13px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); font-weight:600;}
+  .signal-badge{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 14px; border-radius:8px;
+    font-family:'Space Grotesk'; font-weight:700; font-size:16px;
+    width:100%;
+  }
+  .signal-badge.buy{ background:rgba(61,220,151,0.12); color:var(--bull); border:1px solid rgba(61,220,151,0.35);}
+  .signal-badge.sell{ background:rgba(255,107,107,0.12); color:var(--bear); border:1px solid rgba(255,107,107,0.35);}
+  .signal-badge.wait{ background:rgba(124,135,156,0.12); color:var(--muted); border:1px solid var(--line);}
+  .dot{ width:8px; height:8px; border-radius:50%; background:currentColor; }
+  .confidence-row{ display:flex; justify-content:space-between; align-items:center; margin-top:12px; font-family:'JetBrains Mono'; font-size:12px; color:var(--muted);}
+  .bar-track{ height:6px; background:var(--line); border-radius:4px; margin-top:6px; overflow:hidden;}
+  .bar-fill{ height:100%; background:linear-gradient(90deg, var(--amber), var(--bull)); border-radius:4px; transition:width .4s ease;}
+  .ladder{ display:flex; flex-direction:column-reverse; gap:6px; }
+  .rung{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 10px; border-radius:6px;
+    border:1px solid var(--line);
+    background:var(--panel);
+    font-family:'JetBrains Mono'; font-size:12px; color:var(--muted);
+  }
+  .rung.active{ border-color:var(--amber); color:var(--amber); background:rgba(242,193,78,0.08); }
+  .rung .num{
+    width:20px; height:20px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--line); font-size:11px; font-weight:700; color:var(--text);
+  }
+  .rung.active .num{ background:var(--amber); color:#1a1200; }
+  .price{ font-family:'JetBrains Mono'; font-size:11px; color:var(--muted); margin-left:auto; }
+  .note{ font-size:12px; color:var(--muted); line-height:1.5; }
+  .disclaimer{
+    font-size:11px; color:var(--muted); line-height:1.6;
+    border-top:1px solid var(--line); padding-top:14px;
+  }
+  a.gh{ color:var(--amber); text-decoration:none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo"><span class="mark"></span>WaveDesk</div>
+  <div class="controls">
+    <select id="symbol">
+      <option value="BTCUSDT">BTC/USDT</option>
+      <option value="ETHUSDT">ETH/USDT</option>
+      <option value="SOLUSDT">SOL/USDT</option>
+      <option value="BNBUSDT">BNB/USDT</option>
+      <option value="XRPUSDT">XRP/USDT</option>
+      <option value="DOGEUSDT">DOGE/USDT</option>
+    </select>
+    <select id="interval">
+      <option value="15m">15m</option>
+      <option value="1h" selected>1h</option>
+      <option value="4h">4h</option>
+      <option value="1d">1d</option>
+    </select>
+    <button class="refresh" id="refreshBtn">Analyze</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="chart-col">
+    <div id="chart"></div>
+    <div class="status" id="status">Loading Binance data…</div>
+  </div>
+
+  <div class="sidebar">
+    <div class="card">
+      <h3>Signal</h3>
+      <div class="signal-badge wait" id="signalBadge"><span class="dot"></span><span id="signalText">Analyzing…</span></div>
+      <div class="confidence-row"><span>Wave-count confidence</span><span id="confPct">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="confBar" style="width:0%"></div></div>
+    </div>
+
+    <div class="card">
+      <h3>Wave Position</h3>
+      <div class="ladder" id="ladder"></div>
+    </div>
+
+    <div class="card">
+      <h3>How it works</h3>
+      <p class="note">Pivots are found with a ZigZag swing filter, then checked against Elliott Wave rules (wave 2 can't retrace past the start of wave 1, wave 3 isn't the shortest, wave 4 doesn't overlap wave 1) and scored against typical Fibonacci ratios. This is a heuristic reading, not certainty — Elliott Wave counts are inherently open to more than one interpretation.</p>
+    </div>
+
+    <div class="disclaimer">
+      Educational tool only, not financial advice. Data via Binance public API, client-side, no backend required — deploy as-is on GitHub Pages.
+    </div>
+  </div>
+</div>
+
+<script>
+const chartEl = document.getElementById('chart');
+const chart = LightweightCharts.createChart(chartEl, {
+  layout:{ background:{ color:'#0B0E14' }, textColor:'#7C879C', fontFamily:'JetBrains Mono, monospace' },
+  grid:{ vertLines:{ color:'#161B26' }, horzLines:{ color:'#161B26' } },
+  rightPriceScale:{ borderColor:'#232937' },
+  timeScale:{ borderColor:'#232937', timeVisible:true },
+  crosshair:{ mode:0 },
+});
+function sizeChart(){ chart.applyOptions({ width: chartEl.clientWidth, height: 560 }); }
+window.addEventListener('resize', sizeChart);
+
+const candleSeries = chart.addCandlestickSeries({
+  upColor:'#3DDC97', downColor:'#FF6B6B', borderVisible:false,
+  wickUpColor:'#3DDC97', wickDownColor:'#FF6B6B',
+});
+const zigzagSeries = chart.addLineSeries({ color:'#F2C14E', lineWidth:2, priceLineVisible:false, lastValueVisible:false });
+let markerLabels = [];
+
+const statusEl = document.getElementById('status');
+const symbolSel = document.getElementById('symbol');
+const intervalSel = document.getElementById('interval');
+
+async function fetchKlines(symbol, interval){
+  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=500`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('Binance API error ' + res.status);
+  const raw = await res.json();
+  return raw.map(k => ({
+    time: Math.floor(k[0]/1000),
+    open: parseFloat(k[1]), high: parseFloat(k[2]),
+    low: parseFloat(k[3]), close: parseFloat(k[4]),
+  }));
+}
+
+// --- ZigZag pivot detection ---
+function computeZigZag(candles, pct){
+  const pivots = [];
+  let dir = 0; // 1 up, -1 down
+  let lastPivotIdx = 0;
+  let lastPivotPrice = candles[0].close;
+
+  for(let i=1;i<candles.length;i++){
+    const c = candles[i];
+    const change = (c.close - lastPivotPrice) / lastPivotPrice * 100;
+
+    if(dir <= 0 && change <= -pct){
+      // continuing down or starting down
+      if(dir === -1 && candles[i].low < candles[lastPivotIdx].low){
+        lastPivotIdx = i; lastPivotPrice = candles[i].low;
+      } else {
+        pivots.push({ idx: lastPivotIdx, time: candles[lastPivotIdx].time, price: lastPivotPrice, type:'high' });
+        dir = -1; lastPivotIdx = i; lastPivotPrice = candles[i].low;
+      }
+    } else if(dir >= 0 && change >= pct){
+      if(dir === 1 && candles[i].high > candles[lastPivotIdx].high){
+        lastPivotIdx = i; lastPivotPrice = candles[i].high;
+      } else {
+        pivots.push({ idx: lastPivotIdx, time: candles[lastPivotIdx].time, price: lastPivotPrice, type:'low' });
+        dir = 1; lastPivotIdx = i; lastPivotPrice = candles[i].high;
+      }
+    } else {
+      // update running extreme within current leg
+      if(dir === 1 && c.high > lastPivotPrice){ lastPivotPrice = c.high; lastPivotIdx = i; }
+      if(dir === -1 && c.low < lastPivotPrice){ lastPivotPrice = c.low; lastPivotIdx = i; }
+      if(dir === 0){
+        if(c.high - candles[0].close > candles[0].close - c.low){ lastPivotPrice = c.high; lastPivotIdx = i; }
+        else { lastPivotPrice = c.low; lastPivotIdx = i; }
+      }
+    }
+  }
+  pivots.push({ idx: lastPivotIdx, time: candles[lastPivotIdx].time, price: lastPivotPrice, type: dir===1?'high':'low' });
+  return pivots;
+}
+
+// --- Elliott Wave rule check on last 6 pivots (0,1,2,3,4,5) ---
+function scoreImpulse(p){
+  // p = [P0,P1,P2,P3,P4,P5] prices, alternating direction
+  const w1 = Math.abs(p[1]-p[0]);
+  const w2 = Math.abs(p[2]-p[1]);
+  const w3 = Math.abs(p[3]-p[2]);
+  const w4 = Math.abs(p[4]-p[3]);
+  const w5 = Math.abs(p[5]-p[4]);
+  const up = p[1] > p[0]; // overall impulse direction
+
+  // Hard rules
+  if(up){
+    if(p[2] <= p[0]) return null;         // wave2 retraced past wave1 start
+    if(p[4] <= p[1]) return null;         // wave4 overlaps wave1 territory
+  } else {
+    if(p[2] >= p[0]) return null;
+    if(p[4] >= p[1]) return null;
+  }
+  if(w3 < w1 && w3 < w5) return null;     // wave3 can't be shortest
+
+  // Soft scoring vs typical Fibonacci ratios
+  let score = 0, checks = 0;
+  const ratio2 = w2/w1, ratio3 = w3/w1, ratio4 = w4/w3;
+  checks++; if(ratio2 >= 0.382 && ratio2 <= 0.786) score++;
+  checks++; if(ratio3 >= 1.0) score++;
+  checks++; if(ratio4 >= 0.14 && ratio4 <= 0.5) score++;
+  checks++; if(w3 >= w1 && w3 >= w5) score += 1;
+
+  return { confidence: score/checks, up };
+}
+
+function analyzeWaves(pivots, candles){
+  // try the last 6 pivots as a 5-wave impulse (need at least 6 points incl start)
+  if(pivots.length < 6) return null;
+  const last6 = pivots.slice(-6);
+  const prices = last6.map(p=>p.price);
+  const result = scoreImpulse(prices);
+  if(!result) return null;
+  return { pivots: last6, ...result, currentPrice: candles[candles.length-1].close };
+}
+
+function render(candles, pivots, waveResult){
+  candleSeries.setData(candles);
+  zigzagSeries.setData(pivots.map(p=>({ time:p.time, value:p.price })));
+
+  // clear old markers
+  candleSeries.setMarkers([]);
+
+  const ladder = document.getElementById('ladder');
+  const badge = document.getElementById('signalBadge');
+  const signalText = document.getElementById('signalText');
+  const confPct = document.getElementById('confPct');
+  const confBar = document.getElementById('confBar');
+  ladder.innerHTML = '';
+
+  if(!waveResult){
+    badge.className = 'signal-badge wait';
+    signalText.textContent = 'No clean 5-wave structure found';
+    confPct.textContent = '—';
+    confBar.style.width = '0%';
+    for(let i=0;i<5;i++){
+      const r = document.createElement('div');
+      r.className='rung';
+      r.innerHTML = `<span class="num">${i+1}</span><span>Wave ${i+1}</span>`;
+      ladder.appendChild(r);
+    }
+    return;
+  }
+
+  const labels = ['0','1','2','3','4','5'];
+  const markers = waveResult.pivots.map((p, i) => ({
+    time: p.time,
+    position: (i % 2 === 0) === waveResult.up ? 'belowBar' : 'aboveBar',
+    color: '#F2C14E',
+    shape: 'circle',
+    text: labels[i],
+  }));
+  candleSeries.setMarkers(markers);
+
+  const conf = waveResult.confidence;
+  confPct.textContent = Math.round(conf*100) + '%';
+  confBar.style.width = Math.round(conf*100) + '%';
+
+  const atWave5 = true; // last pivot is always index 5 (most recent)
+  let sig, cls;
+  if(waveResult.up){
+    sig = 'Impulse complete — watch for reversal / correction'; cls='sell';
+  } else {
+    sig = 'Downward impulse complete — watch for bounce / wave A→C bottom soon'; cls='buy';
+  }
+  if(conf < 0.4){ cls='wait'; sig = 'Weak wave count — low confidence, stand aside'; }
+
+  badge.className = 'signal-badge ' + cls;
+  signalText.textContent = sig;
+
+  for(let i=1;i<=5;i++){
+    const r = document.createElement('div');
+    r.className = 'rung active';
+    const px = waveResult.pivots[i].price;
+    r.innerHTML = `<span class="num">${i}</span><span>Wave ${i}</span><span class="price">${px.toFixed(px<10?4:2)}</span>`;
+    ladder.appendChild(r);
+  }
+}
+
+async function run(){
+  const symbol = symbolSel.value;
+  const interval = intervalSel.value;
+  statusEl.textContent = `Fetching ${symbol} ${interval} from Binance…`;
+  try{
+    const candles = await fetchKlines(symbol, interval);
+    // pct threshold scales a bit with timeframe
+    const pctMap = { '15m':1.0, '1h':1.8, '4h':3.0, '1d':5.0 };
+    const pivots = computeZigZag(candles, pctMap[interval] || 2);
+    const waveResult = analyzeWaves(pivots, candles);
+    render(candles, pivots, waveResult);
+    statusEl.textContent = `${symbol} · ${interval} · ${candles.length} candles · last close ${candles[candles.length-1].close} · updated ${new Date().toLocaleTimeString()}`;
+  }catch(err){
+    statusEl.textContent = 'Error: ' + err.message + ' — Binance API may be geo-blocked in your browser/region.';
+  }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', run);
+symbolSel.addEventListener('change', run);
+intervalSel.addEventListener('change', run);
+
+sizeChart();
+run();
+setInterval(run, 60000); // auto-refresh every minute
+</script>
+</body>
+</html>
